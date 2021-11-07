@@ -2,7 +2,7 @@ version: 1.0
 environment_variables:
     plaintext:
         "INPUT_FILE": "VPCSetup.yaml"
-        "S3_BUCKET": "codebuildbucketsm"
+        "S3_BUCKET": ""
 phases:
     build:
        commands:
