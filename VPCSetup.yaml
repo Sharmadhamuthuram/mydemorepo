@@ -1,1251 +1,699 @@
-# (c) 2021 Amazon Web Services, Inc. or its affiliates. All Rights Reserved. This AWS Content is provided subject to the terms of the AWS Customer  
-# Agreement available at https://aws.amazon.com/agreement/ or other written agreement between Customer and Amazon Web Services, Inc. 
-#
-# Subnet Naming Convention is defined as : 'Private' + xxxxx + subnet1' - Private is the subnet type, xxxxx is the workload ID & Subnet1 represents the AZ
-# 
-# Example:- ExStream workload private subnets are mapped as follows
-# PrivateExstrSubnet1 in 'us-west-2a' , PrivateExstrSubnet2 in 'us-west-2b'
-# PrivateExstrSubnet3 in 'us-west-2c' and PrivateExstrSubnet4 in 'us-west-2d'
-#
-# Items created in this Template
-# VPC, Subnets, Route 53 Private Hosted Zones, Record Sets, Routing Tables, TGW Attachments, Route to OnPremise  & Common Services VPC
-# Subnet, IAM Role Detalis are exported to SSM Paramaters - Please see the end of this section
-
-AWSTemplateFormatVersion: '2010-09-09'
-Description: This template creates a Multi-AZ VPC infrastructure for Notice CalWIN Production environment in US-West-2 Region.
-
-Metadata:
-  AWS::CloudFormation::Interface:
-    ParameterGroups:
-      - Label:
-          default: Availability Zone Configuration
-        Parameters:
-          - AvailabilityZones
-      - Label:
-          default: VPC Network Configuration
-        Parameters:
-          - VPCCIDR 
-          - VPCName
-          - DNSDomainName
-          - TransitGatewayId
-          - PrivateExstrSubnet1CIDR
-          - PrivateExstrSubnet2CIDR
-          - PrivateExstrSubnet3CIDR
-          - PrivateExstrSubnet4CIDR
-          - PrivateAlfrsSubnet1CIDR
-          - PrivateAlfrsSubnet2CIDR
-          - PrivateAlfrsSubnet3CIDR
-          - PrivateAlfrsSubnet4CIDR
-          - PrivateAlfrsRDSSubnet1CIDR
-          - PrivateAlfrsRDSSubnet2CIDR
-          - PrivateSolarSubnet1CIDR
-          - PrivateSolarSubnet2CIDR
-          - PrivateSolarSubnet3CIDR
-          - PrivateZookrSubnet1CIDR
-          - PrivateZookrSubnet2CIDR
-          - PrivateZookrSubnet3CIDR
-          - TransitGatewaySubnet1CIDR
-          - TransitGatewaySubnet2CIDR
-          - TransitGatewaySubnet3CIDR
-          - TransitGatewaySubnet4CIDR
-          - ExternalCWEAOnPremiseCIDR
-          - ExternalPulseVPNCIDR
-      - Label:
-          default: Tags for resources created
-        Parameters:
-          - Namespace
-          - BaselineTag1Name
-          - BaselineTag1Value
-          - RequiredTag1Name
-          - RequiredTag1Value
-          - RequiredTag2Name
-          - RequiredTag2Value
-    ParameterLabels:
-      AvailabilityZones:
-        default: Availability Zones
-      VPCName:
-        default: VPC Name
-      DNSDomainName:
-        default: Production DNS Domain Name for Route 53 Hosted Zone
-      TransitGatewayId:
-        default: Central Transit Gateway ID in us-west-2
-      PrivateExstrSubnet1CIDR:
-        default: ExStream Comms Workload subnet 1 CIDR
-      PrivateExstrSubnet2CIDR:
-        default: ExStream Comms Workload subnet 2 CIDR
-      PrivateExstrSubnet3CIDR:
-        default: ExStream Comms Workload subnet 3 CIDR
-      PrivateExstrSubnet4CIDR:
-        default: ExStream Comms Workload subnet 4 CIDR
-      PrivateAlfrsSubnet1CIDR:
-        default: Alfresco Workload subnet 1 CIDR
-      PrivateAlfrsSubnet2CIDR:
-        default: Alfresco Workload subnet 2 CIDR
-      PrivateAlfrsSubnet3CIDR:
-        default: Alfresco Workload subnet 3 CIDR
-      PrivateAlfrsSubnet4CIDR:
-        default: Alfresco Workload subnet 4 CIDR
-      PrivateAlfrsRDSSubnet1CIDR:
-        default: Alfresco RDS subnet 1 CIDR
-      PrivateAlfrsRDSSubnet2CIDR:
-        default: Alfresco RDS subnet 2 CIDR
-      PrivateSolarSubnet1CIDR:
-        default: SOLR Workload subnet 1 CIDR
-      PrivateSolarSubnet2CIDR:
-        default: SOLR Workload subnet 2 CIDR
-      PrivateSolarSubnet3CIDR:
-        default: SOLR Workload subnet 3 CIDR
-      PrivateZookrSubnet1CIDR:
-        default: ZooKeeer subnet 1 CIDR
-      PrivateZookrSubnet2CIDR:
-        default: ZooKeeer subnet 2 CIDR
-      PrivateZookrSubnet3CIDR:
-        default: ZooKeeer subnet 2 CIDR
-      TransitGatewaySubnet1CIDR:
-        default: TransitGateway subnet 1 CIDR
-      TransitGatewaySubnet2CIDR:
-        default: TransitGateway subnet 2 CIDR
-      TransitGatewaySubnet3CIDR:
-        default: TransitGateway subnet 3 CIDR
-      TransitGatewaySubnet4CIDR:
-        default: TransitGateway subnet 4 CIDR
-      VPCCIDR:
-        default: VPC CIDR
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation Sample Template VPC_Single_Instance_In_Subnet: Sample
+  template showing how to create a VPC and add an EC2 instance with an Elastic
+  IP address and a security group. **WARNING** This template creates an Amazon
+  EC2 instance. You will be billed for the AWS resources used if you create a
+  stack from this template.
 Parameters:
-  Namespace:
+  InstanceType:
+    Description: WebServer EC2 instance type
     Type: String
-    Description: Prefix for naming resources
-    Default: "ncalwin"
-  AvailabilityZones:
-    Description: 'List of Availability Zones to use for the subnets in the VPC.'
-    Type: CommaDelimitedList
-    Default: 'us-west-2a,us-west-2b,us-west-2c,us-west-2d'
-  VPCName:
-    Default: 'ncw-usw2-prod'
-    Description: Unique Name for the VPC
-    Type: String  
-  VPCCIDR:
-    Default: 172.30.4.0/23
-    Description: CIDR block for the VPC
+    Default: t2.small
+    AllowedValues:
+      - t1.micro
+      - t2.nano
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - m1.small
+      - m1.medium
+      - m1.large
+      - m1.xlarge
+      - m2.xlarge
+      - m2.2xlarge
+      - m2.4xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - m4.10xlarge
+      - c1.medium
+      - c1.xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - c3.4xlarge
+      - c3.8xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - g2.2xlarge
+      - g2.8xlarge
+      - r3.large
+      - r3.xlarge
+      - r3.2xlarge
+      - r3.4xlarge
+      - r3.8xlarge
+      - i2.xlarge
+      - i2.2xlarge
+      - i2.4xlarge
+      - i2.8xlarge
+      - d2.xlarge
+      - d2.2xlarge
+      - d2.4xlarge
+      - d2.8xlarge
+      - hi1.4xlarge
+      - hs1.8xlarge
+      - cr1.8xlarge
+      - cc2.8xlarge
+      - cg1.4xlarge
+    ConstraintDescription: must be a valid EC2 instance type.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    Default: smkeypair
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  SSHLocation:
+    Description: ' The IP address range that can be used to SSH to the EC2 instances'
     Type: String
-  DNSDomainName:
-    Default: folsom.calwin.eds.com
-    Description: DNS Domain Name for Route 53
-    Type: String
-  TransitGatewayId:
-    Default: tgw-0d8cb0a040ccb768a
-    Description: Transit Gateway ID
-    Type: String
-  PrivateExstrSubnet1CIDR:
-    Default: 172.30.4.0/28
-    Description: CIDR block for ExStream Workload subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateExstrSubnet2CIDR:
-    Default: 172.30.4.16/28
-    Description: CIDR block for ExStream Workload subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateExstrSubnet3CIDR:
-    Default: 172.30.4.32/28
-    Description: CIDR block for ExStream Workload subnet 3 located in Availability Zone 3
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateExstrSubnet4CIDR:
-    Default: 172.30.4.48/28
-    Description: CIDR block for ExStream Workloadsubnet 4 located in Availability Zone 4
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsSubnet1CIDR:
-    Default: 172.30.4.64/28
-    Description: CIDR block for Alfresco Workload subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsSubnet2CIDR:
-    Default: 172.30.4.80/28
-    Description: CIDR block for private Alfresco Workload subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsSubnet3CIDR:
-    Default: 172.30.4.96/28
-    Description: CIDR block for Alfresco Workload subnet 3 located in Availability Zone 3
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsSubnet4CIDR:
-    Default: 172.30.4.112/28
-    Description: CIDR block for Alfresco Workload subnet 4 located in Availability Zone 4
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsRDSSubnet1CIDR:
-    Default: 172.30.4.224/28
-    Description: CIDR block for Alfresco RDS subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateAlfrsRDSSubnet2CIDR:
-    Default: 172.30.4.240/28
-    Description: CIDR block for Alfresco RDS subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateSolarSubnet1CIDR:
-    Default: 172.30.4.128/28
-    Description: CIDR block for SOLR Workload subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateSolarSubnet2CIDR:
-    Default: 172.30.4.144/28
-    Description: CIDR block for SOLR Workload subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateSolarSubnet3CIDR:
-    Default: 172.30.4.160/28
-    Description: CIDR block for SOLR Workload subnet 3 located in Availability Zone 3
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateZookrSubnet1CIDR:
-    Default: 172.30.4.176/28
-    Description: CIDR block for ZooKeeper Workload subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateZookrSubnet2CIDR:
-    Default: 172.30.4.192/28
-    Description: CIDR block for ZooKeeper Workload subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  PrivateZookrSubnet3CIDR:
-    Default: 172.30.4.208/28
-    Description: CIDR block for ZooKeeper Workload subnet 3 located in Availability Zone 3
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  TransitGatewaySubnet1CIDR:
-    Default: 172.30.5.0/28
-    Description: CIDR block for Transit subnet 1 located in Availability Zone 1
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  TransitGatewaySubnet2CIDR:
-    Default: 172.30.5.16/28
-    Description: CIDR block for Transit subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  TransitGatewaySubnet3CIDR:
-    Default: 172.30.5.32/28
-    Description: CIDR block for Transit subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  TransitGatewaySubnet4CIDR:
-    Default: 172.30.5.48/28
-    Description: CIDR block for Transit subnet 2 located in Availability Zone 2
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  ExternalCWEAOnPremiseCIDR:
-    Default: 10.4.1.4/32
-    Description: CIDR block for On-Premise Data Center
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  ExternalPulseVPNCIDR:
-    Default: 10.7.100.0/23
-    Description: CIDR block External Pulse VPN
-    Type: String
-    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
-  OrganizationId:
-    Description: Organization ID
-    Type: String
-    Default: 'o-j32wq87ite' #  Need to Change to CalSAWS
-##### Tags specific Paramters
-  BaselineTag1Name:
-    Type: String
-    Description: Name of a required tag as a prefix of the vpc environment
-    Default: "app-stack"
-  BaselineTag1Value:
-    Type: String
-    Description: Value of a tag which would identify centrally CFT managed resources
-    Default: "notice-calwin"
-  RequiredTag1Name:
-    Type: String
-    Description: Name of a required tag
-    Default: "environment"
-  RequiredTag1Value:
-    Type: String
-    Description: Value of a required tag
-    Default: "production"
-  RequiredTag2Name:
-    Type: String
-    Description: Name of a required tag
-    Default: "support-address"
-  RequiredTag2Value:
-    Type: String
-    Description: Value of a required tag
-    Default: "support-email-address@calsaws.org"
-################################
-### VPC creation starts here ###
-################################
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+Mappings:
+  Region2Examples:
+    ap-east-1:
+      Examples: 'https://s3-ap-east-1.amazonaws.com/cloudformation-examples-ap-east-1'
+    ap-northeast-1:
+      Examples: >-
+        https://s3-ap-northeast-1.amazonaws.com/cloudformation-examples-ap-northeast-1
+    ap-northeast-2:
+      Examples: >-
+        https://s3-ap-northeast-2.amazonaws.com/cloudformation-examples-ap-northeast-2
+    ap-northeast-3:
+      Examples: >-
+        https://s3-ap-northeast-3.amazonaws.com/cloudformation-examples-ap-northeast-3
+    ap-south-1:
+      Examples: 'https://s3-ap-south-1.amazonaws.com/cloudformation-examples-ap-south-1'
+    ap-southeast-1:
+      Examples: >-
+        https://s3-ap-southeast-1.amazonaws.com/cloudformation-examples-ap-southeast-1
+    ap-southeast-2:
+      Examples: >-
+        https://s3-ap-southeast-2.amazonaws.com/cloudformation-examples-ap-southeast-2
+    ca-central-1:
+      Examples: >-
+        https://s3-ca-central-1.amazonaws.com/cloudformation-examples-ca-central-1
+    cn-north-1:
+      Examples: >-
+        https://s3.cn-north-1.amazonaws.com.cn/cloudformation-examples-cn-north-1
+    cn-northwest-1:
+      Examples: >-
+        https://s3.cn-northwest-1.amazonaws.com.cn/cloudformation-examples-cn-northwest-1
+    eu-central-1:
+      Examples: >-
+        https://s3-eu-central-1.amazonaws.com/cloudformation-examples-eu-central-1
+    eu-north-1:
+      Examples: 'https://s3-eu-north-1.amazonaws.com/cloudformation-examples-eu-north-1'
+    eu-west-1:
+      Examples: 'https://s3-eu-west-1.amazonaws.com/cloudformation-examples-eu-west-1'
+    eu-west-2:
+      Examples: 'https://s3-eu-west-2.amazonaws.com/cloudformation-examples-eu-west-2'
+    eu-west-3:
+      Examples: 'https://s3-eu-west-3.amazonaws.com/cloudformation-examples-eu-west-3'
+    me-south-1:
+      Examples: 'https://s3-me-south-1.amazonaws.com/cloudformation-examples-me-south-1'
+    sa-east-1:
+      Examples: 'https://s3-sa-east-1.amazonaws.com/cloudformation-examples-sa-east-1'
+    us-east-1:
+      Examples: 'https://s3.amazonaws.com/cloudformation-examples-us-east-1'
+    us-east-2:
+      Examples: 'https://s3-us-east-2.amazonaws.com/cloudformation-examples-us-east-2'
+    us-west-1:
+      Examples: 'https://s3-us-west-1.amazonaws.com/cloudformation-examples-us-west-1'
+    us-west-2:
+      Examples: 'https://s3-us-west-2.amazonaws.com/cloudformation-examples-us-west-2'
+  AWSInstanceType2Arch:
+    t1.micro:
+      Arch: HVM64
+    t2.nano:
+      Arch: HVM64
+    t2.micro:
+      Arch: HVM64
+    t2.small:
+      Arch: HVM64
+    t2.medium:
+      Arch: HVM64
+    t2.large:
+      Arch: HVM64
+    m1.small:
+      Arch: HVM64
+    m1.medium:
+      Arch: HVM64
+    m1.large:
+      Arch: HVM64
+    m1.xlarge:
+      Arch: HVM64
+    m2.xlarge:
+      Arch: HVM64
+    m2.2xlarge:
+      Arch: HVM64
+    m2.4xlarge:
+      Arch: HVM64
+    m3.medium:
+      Arch: HVM64
+    m3.large:
+      Arch: HVM64
+    m3.xlarge:
+      Arch: HVM64
+    m3.2xlarge:
+      Arch: HVM64
+    m4.large:
+      Arch: HVM64
+    m4.xlarge:
+      Arch: HVM64
+    m4.2xlarge:
+      Arch: HVM64
+    m4.4xlarge:
+      Arch: HVM64
+    m4.10xlarge:
+      Arch: HVM64
+    c1.medium:
+      Arch: HVM64
+    c1.xlarge:
+      Arch: HVM64
+    c3.large:
+      Arch: HVM64
+    c3.xlarge:
+      Arch: HVM64
+    c3.2xlarge:
+      Arch: HVM64
+    c3.4xlarge:
+      Arch: HVM64
+    c3.8xlarge:
+      Arch: HVM64
+    c4.large:
+      Arch: HVM64
+    c4.xlarge:
+      Arch: HVM64
+    c4.2xlarge:
+      Arch: HVM64
+    c4.4xlarge:
+      Arch: HVM64
+    c4.8xlarge:
+      Arch: HVM64
+    g2.2xlarge:
+      Arch: HVMG2
+    g2.8xlarge:
+      Arch: HVMG2
+    r3.large:
+      Arch: HVM64
+    r3.xlarge:
+      Arch: HVM64
+    r3.2xlarge:
+      Arch: HVM64
+    r3.4xlarge:
+      Arch: HVM64
+    r3.8xlarge:
+      Arch: HVM64
+    i2.xlarge:
+      Arch: HVM64
+    i2.2xlarge:
+      Arch: HVM64
+    i2.4xlarge:
+      Arch: HVM64
+    i2.8xlarge:
+      Arch: HVM64
+    d2.xlarge:
+      Arch: HVM64
+    d2.2xlarge:
+      Arch: HVM64
+    d2.4xlarge:
+      Arch: HVM64
+    d2.8xlarge:
+      Arch: HVM64
+    hi1.4xlarge:
+      Arch: HVM64
+    hs1.8xlarge:
+      Arch: HVM64
+    cr1.8xlarge:
+      Arch: HVM64
+    cc2.8xlarge:
+      Arch: HVM64
+  AWSInstanceType2NATArch:
+    t1.micro:
+      Arch: NATHVM64
+    t2.nano:
+      Arch: NATHVM64
+    t2.micro:
+      Arch: NATHVM64
+    t2.small:
+      Arch: NATHVM64
+    t2.medium:
+      Arch: NATHVM64
+    t2.large:
+      Arch: NATHVM64
+    m1.small:
+      Arch: NATHVM64
+    m1.medium:
+      Arch: NATHVM64
+    m1.large:
+      Arch: NATHVM64
+    m1.xlarge:
+      Arch: NATHVM64
+    m2.xlarge:
+      Arch: NATHVM64
+    m2.2xlarge:
+      Arch: NATHVM64
+    m2.4xlarge:
+      Arch: NATHVM64
+    m3.medium:
+      Arch: NATHVM64
+    m3.large:
+      Arch: NATHVM64
+    m3.xlarge:
+      Arch: NATHVM64
+    m3.2xlarge:
+      Arch: NATHVM64
+    m4.large:
+      Arch: NATHVM64
+    m4.xlarge:
+      Arch: NATHVM64
+    m4.2xlarge:
+      Arch: NATHVM64
+    m4.4xlarge:
+      Arch: NATHVM64
+    m4.10xlarge:
+      Arch: NATHVM64
+    c1.medium:
+      Arch: NATHVM64
+    c1.xlarge:
+      Arch: NATHVM64
+    c3.large:
+      Arch: NATHVM64
+    c3.xlarge:
+      Arch: NATHVM64
+    c3.2xlarge:
+      Arch: NATHVM64
+    c3.4xlarge:
+      Arch: NATHVM64
+    c3.8xlarge:
+      Arch: NATHVM64
+    c4.large:
+      Arch: NATHVM64
+    c4.xlarge:
+      Arch: NATHVM64
+    c4.2xlarge:
+      Arch: NATHVM64
+    c4.4xlarge:
+      Arch: NATHVM64
+    c4.8xlarge:
+      Arch: NATHVM64
+    g2.2xlarge:
+      Arch: NATHVMG2
+    g2.8xlarge:
+      Arch: NATHVMG2
+    r3.large:
+      Arch: NATHVM64
+    r3.xlarge:
+      Arch: NATHVM64
+    r3.2xlarge:
+      Arch: NATHVM64
+    r3.4xlarge:
+      Arch: NATHVM64
+    r3.8xlarge:
+      Arch: NATHVM64
+    i2.xlarge:
+      Arch: NATHVM64
+    i2.2xlarge:
+      Arch: NATHVM64
+    i2.4xlarge:
+      Arch: NATHVM64
+    i2.8xlarge:
+      Arch: NATHVM64
+    d2.xlarge:
+      Arch: NATHVM64
+    d2.2xlarge:
+      Arch: NATHVM64
+    d2.4xlarge:
+      Arch: NATHVM64
+    d2.8xlarge:
+      Arch: NATHVM64
+    hi1.4xlarge:
+      Arch: NATHVM64
+    hs1.8xlarge:
+      Arch: NATHVM64
+    cr1.8xlarge:
+      Arch: NATHVM64
+    cc2.8xlarge:
+      Arch: NATHVM64
+  AWSRegionArch2AMI:
+    af-south-1:
+      HVM64: ami-064cc455f8a1ef504
+      HVMG2: NOT_SUPPORTED
+    ap-east-1:
+      HVM64: ami-f85b1989
+      HVMG2: NOT_SUPPORTED
+    ap-northeast-1:
+      HVM64: ami-0b2c2a754d5b4da22
+      HVMG2: ami-09d0e0e099ecabba2
+    ap-northeast-2:
+      HVM64: ami-0493ab99920f410fc
+      HVMG2: NOT_SUPPORTED
+    ap-northeast-3:
+      HVM64: ami-01344f6f63a4decc1
+      HVMG2: NOT_SUPPORTED
+    ap-south-1:
+      HVM64: ami-03cfb5e1fb4fac428
+      HVMG2: ami-0244c1d42815af84a
+    ap-southeast-1:
+      HVM64: ami-0ba35dc9caf73d1c7
+      HVMG2: ami-0e46ce0d6a87dc979
+    ap-southeast-2:
+      HVM64: ami-0ae99b503e8694028
+      HVMG2: ami-0c0ab057a101d8ff2
+    ca-central-1:
+      HVM64: ami-0803e21a2ec22f953
+      HVMG2: NOT_SUPPORTED
+    cn-north-1:
+      HVM64: ami-07a3f215cc90c889c
+      HVMG2: NOT_SUPPORTED
+    cn-northwest-1:
+      HVM64: ami-0a3b3b10f714a0ff4
+      HVMG2: NOT_SUPPORTED
+    eu-central-1:
+      HVM64: ami-0474863011a7d1541
+      HVMG2: ami-0aa1822e3eb913a11
+    eu-north-1:
+      HVM64: ami-0de4b8910494dba0f
+      HVMG2: ami-32d55b4c
+    eu-south-1:
+      HVM64: ami-08427144fe9ebdef6
+      HVMG2: NOT_SUPPORTED
+    eu-west-1:
+      HVM64: ami-015232c01a82b847b
+      HVMG2: ami-0d5299b1c6112c3c7
+    eu-west-2:
+      HVM64: ami-0765d48d7e15beb93
+      HVMG2: NOT_SUPPORTED
+    eu-west-3:
+      HVM64: ami-0caf07637eda19d9c
+      HVMG2: NOT_SUPPORTED
+    me-south-1:
+      HVM64: ami-0744743d80915b497
+      HVMG2: NOT_SUPPORTED
+    sa-east-1:
+      HVM64: ami-0a52e8a6018e92bb0
+      HVMG2: NOT_SUPPORTED
+    us-east-1:
+      HVM64: ami-032930428bf1abbff
+      HVMG2: ami-0aeb704d503081ea6
+    us-east-2:
+      HVM64: ami-027cab9a7bf0155df
+      HVMG2: NOT_SUPPORTED
+    us-west-1:
+      HVM64: ami-088c153f74339f34c
+      HVMG2: ami-0a7fc72dc0e51aa77
+    us-west-2:
+      HVM64: ami-01fee56b22f308154
+      HVMG2: ami-0fe84a5b4563d8f27
 Resources:
-  DHCPOptions:
-    Type: AWS::EC2::DHCPOptions
-    Properties:
-      DomainName:
-          !Join ["", [!Ref "AWS::Region", .compute.internal]] # Need to check - folsom.calwin.eds.com?
-      DomainNameServers:
-        - AmazonProvidedDNS # Need to check? What about internal host name resolution?
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-dhcp-${VPCName}"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-# Create the target VPC
   VPC:
-    Type: AWS::EC2::VPC
+    Type: 'AWS::EC2::VPC'
     Properties:
-      CidrBlock: !Ref 'VPCCIDR'
-      EnableDnsSupport: 'true'
-      EnableDnsHostnames: 'true'
+      CidrBlock: 10.0.0.0/16
       Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-vpc"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-  VPCDHCPOptionsAssociation:
-    Type: AWS::EC2::VPCDHCPOptionsAssociation
-    Properties:
-      VpcId: !Ref 'VPC'
-      DhcpOptionsId: !Ref 'DHCPOptions'
-# Create Network Subnets in VPC     
-  PrivateExstrSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateExstrSubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-exstream-workload-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-  PrivateExstrSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateExstrSubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-exstream-workload-azb"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-  PrivateExstrSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateExstrSubnet3CIDR"
-      AvailabilityZone: !Select ["2", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-exstream-workload-azc"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateExstrSubnet4:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateExstrSubnet4CIDR"
-      AvailabilityZone: !Select ["3", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-exstream-workload-azd"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateAlfrsSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsSubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-workload-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateAlfrsSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsSubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-workload-azb"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateAlfrsSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsSubnet3CIDR"
-      AvailabilityZone: !Select ["2", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-workload-azc"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateAlfrsSubnet4:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsSubnet4CIDR"
-      AvailabilityZone: !Select ["3", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-workload-azd"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateAlfrsRDSSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsRDSSubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-rds-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
- 
-  PrivateAlfrsRDSSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateAlfrsRDSSubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-alfresco-rds-azb"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateSolarSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateSolarSubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-solr-workload-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
- 
-  PrivateSolarSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateSolarSubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-solr-workload-azb"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateSolarSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateSolarSubnet3CIDR"
-      AvailabilityZone: !Select ["2", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-solr-workload-azc"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateZookrSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateZookrSubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-Zookeeper-workload-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateZookrSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateZookrSubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-solr-workload-azb"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
- 
-  PrivateZookrSubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "PrivateZookrSubnet3CIDR"
-      AvailabilityZone: !Select ["2", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-subnet-solr-workload-azc"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  TransitGatewaySubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "TransitGatewaySubnet1CIDR"
-      AvailabilityZone: !Select ["0", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: "TransitGateway-Attachment-Subnet1"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  TransitGatewaySubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "TransitGatewaySubnet2CIDR"
-      AvailabilityZone: !Select ["1", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: "TransitGateway-Attachment-Subnet2"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  TransitGatewaySubnet3:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: !Ref "TransitGatewaySubnet3CIDR"
-      AvailabilityZone: !Select ["2", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: "TransitGateway-Attachment-Subnet3"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  TransitGatewaySubnet4:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref "VPC"
-      CidrBlock: 
-        Ref: "TransitGatewaySubnet4CIDR"
-      AvailabilityZone: !Select ["3", !Ref "AvailabilityZones"]
-      Tags:
-        - Key: Name
-          Value: "TransitGateway-Attachment-Subnet4"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-  TransitGatewayAttachments:
-    Type: 'AWS::EC2::TransitGatewayAttachment'
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+  Subnet:
+    Type: 'AWS::EC2::Subnet'
     Properties:
       VpcId: !Ref VPC
-      TransitGatewayId: !Ref TransitGatewayId
-      SubnetIds:
-        - !Ref TransitGatewaySubnet1
-        - !Ref TransitGatewaySubnet2
-        - !Ref TransitGatewaySubnet3
-        - !Ref TransitGatewaySubnet4
+      CidrBlock: 10.0.0.0/24
       Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-TransitGateway-attachments"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-#############################################
-### Route Tables, Associations and Routes ###
-#############################################
-# Create Private Subnet 1 Route tables
-  PrivateSubnets1RouteTable: #route table for us-west2-az1
-    Type: AWS::EC2::RouteTable
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
     Properties:
-      VpcId: !Ref "VPC"
       Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-routetable-transitgateway-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateExstrSubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
     Properties:
-      SubnetId: 
-        Ref: PrivateExstrSubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  PrivateAlfrsSubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
     Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsSubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  PrivateAlfrsRDSSubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsRDSSubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  PrivateSolarSubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateSolarSubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  PrivateZookrSubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateZookrSubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  TransitGatewaySubnet1RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: TransitGatewaySubnet1
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-  PrivateSubnet1RouteCWEAONPremise:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
-    Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalCWEAOnPremiseCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-  PrivateSubnet1RouteExternalPulseVPN:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
-    Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalPulseVPNCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-# Create Private Subnet 2 Route tables
-  PrivateSubnets2RouteTable: #route table for us-west2-az2
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref "VPC"
+      VpcId: !Ref VPC
       Tags:
-      - Key: Name
-        Value: !Sub "${Namespace}-${VPCName}-routetable-transitgateway-aza"
-      - Key: !Ref BaselineTag1Name
-        Value: !Ref BaselineTag1Value
-      - Key: !Ref RequiredTag1Name
-        Value: !Ref RequiredTag1Value
-      - Key: !Ref RequiredTag2Name
-        Value: !Ref RequiredTag2Value
-
-  PrivateExstrSubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateExstrSubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  PrivateAlfrsSubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsSubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  PrivateAlfrsRDSSubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsRDSSubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  PrivateSolarSubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateSolarSubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  PrivateZookrSubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateZookrSubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  TransitGatewaySubnet2RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: TransitGatewaySubnet2
-      RouteTableId:
-        Ref: PrivateSubnets2RouteTable
-  PrivateSubnet1RouteCWEAONPremise:
-    DependsOn:
-     - TransitGatewayAttachments
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+  Route:
     Type: 'AWS::EC2::Route'
+    DependsOn: AttachGateway
     Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalCWEAOnPremiseCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-  PrivateSubnet1RouteExternalPulseVPN:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalPulseVPNCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-# Create Private Subnet 3 Route tables
-  PrivateSubnets3RouteTable: #route table for us-west2-az3
-    Type: AWS::EC2::RouteTable
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+  NetworkAcl:
+    Type: 'AWS::EC2::NetworkAcl'
     Properties:
-      VpcId: !Ref "VPC"
+      VpcId: !Ref VPC
       Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-routetable-transitgateway-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateExstrSubnet3RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+  InboundHTTPNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      SubnetId: 
-        Ref: PrivateExstrSubnet3
-      RouteTableId:
-        Ref: PrivateSubnets3RouteTable
-  PrivateAlfrsSubnet3RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '80'
+        To: '80'
+  InboundSSHNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsSubnet3
-      RouteTableId:
-        Ref: PrivateSubnets3RouteTable
-  PrivateSolarSubnet3RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '101'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '22'
+        To: '22'
+  InboundResponsePortsNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      SubnetId: 
-        Ref: PrivateSolarSubnet3
-      RouteTableId:
-        Ref: PrivateSubnets3RouteTable
-  PrivateZookrSubnet3RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '102'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '1024'
+        To: '65535'
+  OutBoundHTTPNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      SubnetId: 
-        Ref: PrivateZookrSubnet3
-      RouteTableId:
-        Ref: PrivateSubnets3RouteTable
-  TransitGatewaySubnet3RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '80'
+        To: '80'
+  OutBoundHTTPSNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      SubnetId: 
-        Ref: TransitGatewaySubnet3
-      RouteTableId:
-        Ref: PrivateSubnets3RouteTable
-  PrivateSubnet1RouteCWEAONPremise:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '101'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '443'
+        To: '443'
+  OutBoundResponsePortsNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
     Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalCWEAOnPremiseCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-  PrivateSubnet1RouteExternalPulseVPN:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '102'
+      Protocol: '6'
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: '1024'
+        To: '65535'
+  SubnetNetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
     Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalPulseVPNCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-# Create Private Subnet 4 Route tables
-  PrivateSubnets4RouteTable: #route table for us-west2-az4
-    Type: AWS::EC2::RouteTable
+      SubnetId: !Ref Subnet
+      NetworkAclId: !Ref NetworkAcl
+  IPAddress:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: AttachGateway
     Properties:
-      VpcId: !Ref "VPC"
-      Tags:
-        - Key: Name
-          Value: !Sub "${Namespace}-${VPCName}-routetable-transitgateway-aza"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  PrivateExstrSubnet4RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+      Domain: vpc
+      InstanceId: !Ref WebServerInstance
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      SubnetId: 
-        Ref: PrivateExstrSubnet4
-      RouteTableId:
-        Ref: PrivateSubnets4RouteTable
-  PrivateAlfrsSubnet4RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: PrivateAlfrsSubnet4
-      RouteTableId:
-        Ref: PrivateSubnets4RouteTable
-  TransitGatewaySubnet4RouteTableAssociation:
-    Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    Properties:
-      SubnetId: 
-        Ref: TransitGatewaySubnet4
-      RouteTableId:
-        Ref: PrivateSubnets4RouteTable
-  PrivateSubnet1RouteCWEAONPremise:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
-    Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalCWEAOnPremiseCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-  PrivateSubnet1RouteExternalPulseVPN:
-    DependsOn:
-     - TransitGatewayAttachments
-    Type: 'AWS::EC2::Route'
-    Properties:
-      DestinationCidrBlock: 
-        Ref: ExternalPulseVPNCIDR
-      RouteTableId:
-        Ref: PrivateSubnets1RouteTable
-      TransitGatewayId: 
-        Ref: TransitGatewayId
-# Ncalwin range of IPS into a Prefix list.
-  NcalwinSourcesPrefixList:
-    Type: AWS::EC2::PrefixList
-    Properties:
-      PrefixListName: "all-ncalwin-ips"
-      AddressFamily: "IPv4"
-      MaxEntries: 10
-      Entries:
-        - Cidr: !Ref "ExternalPulseVPNCIDR" # "10.7.100.0/23"
-          Description: "External PulseVPN / Common Services VPC / ExStream Designer CIDRs"
-        - Cidr: !Ref "ExternalCWEAOnPremiseCIDR"
-          Description: "On Premise Data Center CIDR"
-      Tags:
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-
-  # ExStream Communications Server(s) Security Group
-  ExStrBaselineSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub "${Namespace}-secgrp-exstr-baseline"
-      GroupDescription: "This security group provides ssh access from On-prem"
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          IpProtocol: "-1"
+      VpcId: !Ref VPC
+      GroupDescription: Enable SSH access via port 22
       SecurityGroupIngress:
-        - CidrIp: !Ref "VPCCIDR" #Do we really need this rule?
-          FromPort: 0
-          ToPort: 0
-          IpProtocol: tcp
-        - SourcePrefixListId: !Ref "NcalwinSourcesPrefixList"
-          FromPort: 22
-          ToPort: 22
-          IpProtocol: tcp
-          IpProtocol: tcp
-        - SourcePrefixListId: !Ref "NcalwinSourcesPrefixList"
-          FromPort: 443
-          ToPort: 443
-          IpProtocol: tcp
-        - SourcePrefixListId: !Ref "NcalwinSourcesPrefixList"
-          FromPort: 2718
-          ToPort: 2720
-          IpProtocol: tcp
-        - CidrIp: !Ref "ExternalCWEAOnPremiseCIDR"
-          FromPort: 2818
-          ToPort: 2820
-          IpProtocol: tcp
-        - CidrIp: !Ref "ExternalCWEAOnPremiseCIDR"
-          FromPort: 2918
-          ToPort: 2920
-          IpProtocol: tcp
-        - SourcePrefixListId: !Ref "NcalwinSourcesPrefixList"
-          FromPort: 9443
-          ToPort: 9443
-          IpProtocol: tcp
-        - CidrIp: !Ref "ExternalCWEAOnPremiseCIDR"
-          FromPort: 9543
-          ToPort: 9543
-          IpProtocol: tcp
-        - CidrIp: !Ref "ExternalCWEAOnPremiseCIDR"
-          FromPort: 9643
-          ToPort: 9643
-          IpProtocol: tcp
-        - SourcePrefixListId: !Ref "NcalwinSourcesPrefixList"
-          FromPort: 28800
-          ToPort: 28805
-          IpProtocol: tcp
-        - CidrIp: !Ref "ExternalCWEAOnPremiseCIDR"
-          FromPort: 61000
-          ToPort: 61000
-          IpProtocol: tcp
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+  WebServerInstance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn: AttachGateway
+    Metadata:
+      Comment: Install a simple application
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              httpd: []
+          files:
+            /var/www/html/index.html:
+              content: !Join 
+                - |+
+
+                - - <img src="
+                  - !FindInMap 
+                    - Region2Examples
+                    - !Ref 'AWS::Region'
+                    - Examples
+                  - /cloudformation_graphic.png" alt="AWS CloudFormation Logo"/>
+                  - >-
+                    <h1>Congratulations, you have successfully launched the AWS
+                    CloudFormation sample.</h1>
+              mode: '000644'
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [main]
+                  - stack=
+                  - !Ref 'AWS::StackId'
+                  - |+
+
+                  - region=
+                  - !Ref 'AWS::Region'
+                  - |+
+
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [cfn-auto-reloader-hook]
+                  - |
+                    triggers=post.update
+                  - >
+                    path=Resources.WebServerInstance.Metadata.AWS::CloudFormation::Init
+                  - 'action=/opt/aws/bin/cfn-init -v '
+                  - '         --stack '
+                  - !Ref 'AWS::StackName'
+                  - '         --resource WebServerInstance '
+                  - '         --region '
+                  - !Ref 'AWS::Region'
+                  - |+
+
+                  - |
+                    runas=root
+              mode: '000400'
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              httpd:
+                enabled: 'true'
+                ensureRunning: 'true'
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    Properties:
+      ImageId: !FindInMap 
+        - AWSRegionArch2AMI
+        - !Ref 'AWS::Region'
+        - !FindInMap 
+          - AWSInstanceType2Arch
+          - !Ref InstanceType
+          - Arch
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
       Tags:
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-      VpcId:
-        Ref: "VPC"
-  # EC2 IAM Role
-  ExStrIAMRolesforEC2:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      RoleName: 'ExStream-Stack-EC2-Role'
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - ec2.amazonaws.com
-          Action:
-          - sts:AssumeRole
-      ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      - arn:aws:iam::aws:policy/EC2InstanceConnect
-      - arn:aws:iam::aws:policy/AmazonS3FullAccess # Not Recommended.
-  # Now Create DNS Hosted Private Zone
-  DNSHostedZone:
-    Type: 'AWS::Route53::HostedZone'
-    Properties:
-      Name:
-        Ref: DNSDomainName
-      VPCs :
-        - 
-          VPCId:
-            Ref: VPC
-          VPCRegion:
-            Ref: 'AWS::Region'
-      HostedZoneTags:
-        - Key: Name
-          Value: !Sub "${RequiredTag1Value}-${DNSDomainName}-HostedZone"
-        - Key: !Ref BaselineTag1Name
-          Value: !Ref BaselineTag1Value
-        - Key: !Ref RequiredTag1Name
-          Value: !Ref RequiredTag1Value
-        - Key: !Ref RequiredTag2Name
-          Value: !Ref RequiredTag2Value
-  # Export all key information to SSM Parameters for future references by Apps
-  VPCIDSSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/vpc/id"
-      Type: "String"
-      Value: !Ref 'VPC'
-      Description: "SSM Parameter for VPC ID"
-      Tags:
-        baseline: !Ref BaselineTag1Value   
-  PrivateExstrSubnet1SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/subnet/1"
-      Type: "String"
-      Value: !Ref PrivateExstrSubnet1
-      Description: "SSM Parameter for Exstream Private Subnet1"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateExstrSubnet2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/subnet/2"
-      Type: "String"
-      Value: !Ref PrivateExstrSubnet2
-      Description: "SSM Parameter for Exstream Private Subnet2"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateExstrSubnet3SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/subnet/3"
-      Type: "String"
-      Value: !Ref PrivateExstrSubnet3
-      Description: "SSM Parameter for Exstream Private Subnet3"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateExstrSubnet4SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/subnet/4"
-      Type: "String"
-      Value: !Ref PrivateExstrSubnet4
-      Description: "SSM Parameter for Exstream Private Subnet4"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsSubnet1SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/alfsr/subnet/1"
-      Type: "String"
-      Value: !Ref PrivateAlfrsSubnet1
-      Description: "SSM Parameter for Alfresco Private Subnet1"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsSubnet2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/vpc/sub/alfrs/2"
-      Type: "String"
-      Value: !Ref PrivateAlfrsSubnet2
-      Description: "SSM Parameter for Alfresco Private Subnet2"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsSubnet3SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/alfsr/subnet/3"
-      Type: "String"
-      Value: !Ref PrivateAlfrsSubnet3
-      Description: "SSM Parameter for Alfresco Private Subnet3"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsSubnet4SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/alfsr/subnet/4"
-      Type: "String"
-      Value: !Ref PrivateAlfrsSubnet4
-      Description: "SSM Parameter for Alfresco Private Subnet4"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsRDSSubnet1SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/alfsrrds/subnet/1"
-      Type: "String"
-      Value: !Ref PrivateAlfrsRDSSubnet1
-      Description: "SSM Parameter for Alfresco RDS Private Subnet1"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateAlfrsRDSSubnet2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/alfsrrds/subnet/2"
-      Type: "String"
-      Value: !Ref PrivateAlfrsRDSSubnet2
-      Description: "SSM Parameter for Alfresco RDS Private Subnet2"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateSolarSubnet1SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/solar/subnet/1"
-      Type: "String"
-      Value: !Ref PrivateSolarSubnet1
-      Description: "SSM Parameter for Solar Private Subnet1"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateSolarSubnet2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/solar/subnet/2"
-      Type: "String"
-      Value: !Ref PrivateSolarSubnet2
-      Description: "SSM Parameter for Solar Private Subnet2"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateSolarSubnet3SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/solar/subnet/3"
-      Type: "String"
-      Value: !Ref PrivateSolarSubnet3
-      Description: "SSM Parameter for Solar Private Subnet3"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateZookrSubnet1SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/zookr/subnet/1"
-      Type: "String"
-      Value: !Ref PrivateZookrSubnet1
-      Description: "SSM Parameter for ZooKeeper Private Subnet1"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateZookrSubnet2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/zookr/subnet/2"
-      Type: "String"
-      Value: !Ref PrivateZookrSubnet2
-      Description: "SSM Parameter for ZooKeeper Private Subnet2"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  PrivateZookrSubnet3SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/zookr/subnet/3"
-      Type: "String"
-      Value: !Ref PrivateZookrSubnet3
-      Description: "SSM Parameter for ZooKeeper Private Subnet3"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  ExStrIAMRolesforEC2SSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/ec2/iam-role"
-      Type: "String"
-      Value: !Ref ExStrIAMRolesforEC2
-      Description: "IAM Role Parameter for ExStream EC2 Instances"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  ExStrBaselineSecurityGroupSSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/exstr/ec2/sgs/base-line"
-      Type: "String"
-      Value: !Ref ExStrBaselineSecurityGroup
-      Description: "Security Group SSM Parameter for Exstream EC2 Instances"
-      Tags:
-        baseline: !Ref BaselineTag1Value
-  Route53HostedZoneIdSSMParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: !Sub "/${Namespace}/${VPCName}/r53/hostedzoneid"
-      Type: "String"
-      Value: !GetAtt DNSHostedZone.Id
-      Description: "SSM Parameter for Route 53 Hosted Zone Id"
-      Tags:
-        baseline: !Ref BaselineTag1Value 
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+      NetworkInterfaces:
+        - GroupSet:
+            - !Ref InstanceSecurityGroup
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          DeleteOnTermination: 'true'
+          SubnetId: !Ref Subnet
+      UserData: !Base64 
+        'Fn::Join':
+          - ''
+          - - |
+              #!/bin/bash -xe
+            - |
+              yum update -y aws-cfn-bootstrap
+            - '/opt/aws/bin/cfn-init -v '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource WebServerInstance '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+            - '/opt/aws/bin/cfn-signal -e $? '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource WebServerInstance '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+Outputs:
+  URL:
+    Value: !Join 
+      - ''
+      - - 'http://'
+        - !GetAtt 
+          - WebServerInstance
+          - PublicIp
+    Description: Newly created application URL
