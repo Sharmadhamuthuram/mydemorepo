@@ -2,7 +2,7 @@ version: 0.2
 phases:
   build:
     commands:
-        - export BUCKET=myserverlesscodepipelinebucket
+        - export BUCKET=demo-app-581209585450-us-east-1-demoapp1
         - aws cloudformation package --template VPCSetup.yaml --s3-bucket $BUCKET --output-template output.yaml
 artifacts:
   type: zip
