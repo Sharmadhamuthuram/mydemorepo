@@ -566,11 +566,11 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           CidrIp: 0.0.0.0/0
-      # SecurityGroupEgress:
-      #   - IpProtocol: tcp
-      #     FromPort: '1024'
-      #     ToPort: '65535'
-      #     CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: '1024'
+          ToPort: '65535'
+          CidrIp: 0.0.0.0/0
   WebServerInstance:
     Type: 'AWS::EC2::Instance'
     DependsOn: AttachGateway
