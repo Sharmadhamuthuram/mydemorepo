@@ -6,7 +6,6 @@ phases:
   build:
     commands:
       - aws cloudformation package --template VPCSetup.yaml --s3-bucket ${S3_BUCKET} --output-template output.yaml
-      - ls -l
       - cfn_nag_scan --input-path VPCSetup.yaml
 artifacts:
   type: zip
